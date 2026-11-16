@@ -33,7 +33,11 @@ HYW 的 `IronMageEntity` 是纯 `RangedAttackMob`，永不挥剑；本类型靠"
 | 护甲 | `irons_spellbooks:pyromancer_*` 四件（spell1.20/fire1.40 → pm6.72） | roster.json |
 | 法术池 | flaming_strike L4 / catch_flame L6 / combustion_jet L4 / fire_arrow L5 / oakskin L7 | roster.json |
 
-**已知合规问题（用户 11-16 决定：本轮只改神化，其余不动）**：护甲无神化词缀（应橙）、武器史诗紫（应橙）。
+**神化品质（2026-11-17 已改）**：高阶单位装备必须是神化橙（`apotheosis:mythic`）。
+- 亡灵阵营的 `RosterTier.UNDEAD` 是 `affixRarity=null`，**不走自动 tier 策略**（`RosterAffixPolicy.apply` 开头就 `!hasHumanPolicy()` 返回）；即使是亡灵加 `tier:"SPECIAL"` 也无效，因为 `hasHumanPolicy()` 要求 `!isUndead()`。
+- 因此高阶亡灵的神化词缀必须**在 roster.json 的装备 NBT 里写死**：`affix_data:{rarity:"apotheosis:mythic",affixes:{"<affixId>":1.0f}}`。
+- U05 现值：武器 `netherite_longsword` = mythic + `sword/attribute/infernal` + `sword/special/thunderstruck`；四件 pyromancer 护甲 = mythic + 分别 ironforged / blockading / stalwart / windswept。
+- 词缀 id 模板在 `RosterAffixPolicy.Slot` 的 fallback 里；照 U06/U10 高阶亡灵的写法。血量类词缀（blessed/max_health）被禁用，别用。
 
 ---
 
