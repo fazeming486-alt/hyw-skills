@@ -38,6 +38,7 @@ HYW 的 `IronMageEntity` 是纯 `RangedAttackMob`，永不挥剑；本类型靠"
 - 因此高阶亡灵的神化词缀必须**在 roster.json 的装备 NBT 里写死**：`affix_data:{rarity:"apotheosis:mythic",affixes:{"<affixId>":1.0f}}`。
 - U05 现值：武器 `netherite_longsword` = mythic + `sword/attribute/infernal` + `sword/special/thunderstruck`；四件 pyromancer 护甲 = mythic + 分别 ironforged / blockading / stalwart / windswept。
 - 词缀 id 模板在 `RosterAffixPolicy.Slot` 的 fallback 里；照 U06/U10 高阶亡灵的写法。血量类词缀（blessed/max_health）被禁用，别用。
+- **护甲必须带 `HywIntrinsicItem:1b`（2026-11-17 关键坑）**：Apotheosis 属性词缀走 Forge `ItemAttributeModifierEvent`，对所有 LivingEntity 生效（无 Player 限制），但前提是装备真的在 ArmorItems 槽里。KJS `item replace entity ... armor.*` 装的护甲若缺此标记，会被 HYW `normalizeManagedEquipment` 从槽里移出 → 事件不触发 → 铁铸/风袭/坚定全部失效（而武器走 mainhand 不受影响）。写法：`{...,affix_data:{...},HywIntrinsicItem:1b}`。修复后实机：armor 0→24、speed 0.36→0.486、KB 0.35→0.55。
 
 ---
 
