@@ -11,6 +11,7 @@ Follow this order. Do not report "done" until the verify step passes in-game.
 
 - Re-read `design/亡灵军_兵种统计.md` and `design/人类联邦军_兵种统计.md`. They are the only source of truth for existing units.
 - Write down: 代号, 名称, 档位 (低/中/高), 大类 (纯中世纪 / 魔法 / 反载), 实体 id, 生命, 装备, 技能, 标签.
+- **等级铁律（不可违反）**：roster 兵种**一律固定等级 1**，禁止 HYW 升级/等级成长机制。等级只作面板显示，不参与战力；数值全部由 profile + 装备直接决定。现役实现：`RosterCatalog.parse()` 直接写 `int level = 1`（忽略 JSON 中的 level），`BaseCombatEntityRosterLevelMixin` 取消 `addExperience` 与 `applyLevelWithStats` 成长，`RosterLoadoutService.applyDelayed()` 把旧单位收敛到 1。新增兵种不得填写非 1 的等级；不要在 skill、文档或配置里再引入等级成长。
 - **Casters: pick a HYW native Iron's-adapted entity first** — `hundred_years_war:iron_mage` (human, `IronMageEntity`) or `hundred_years_war:hyw_skeleton_mage` / `hyw_wither_skeleton_mage` (undead). They already have a spell pool reader, ranged-only AI, and creation-mode-safe targeting. Do NOT bolt a caster onto a melee unit (`hyw_zombie` / `warrior`) with a custom Java target service.
 - **HYW 的单位面板种族按实体 id 路径前缀判定**（`UnitDescriptionHelper.inferRaceId`）：`hyw_skeleton*` / `hyw_zombie*` / `hyw_wither_skeleton*` → 亡灵；其它（含 `iron_mage`）→ 雇佣兵/人类。需要「亡灵 + 自定义皮肤」时，注册一个路径以 `hyw_skeleton` 开头的自建实体（rtsbridge 里继承 `HywSkeletonMageEntity`），再套 `IronMage` 人形渲染器。
 - 自建实体不在 HYW 的皮肤白名单里，`sanitizeSkinSelection()` 会把 `custom:` 皮肤清空；在子类里覆盖 `sanitizeSkinSelection()` 与 `clearCustomSkin()`。
@@ -64,7 +65,7 @@ Follow this order. Do not report "done" until the verify step passes in-game.
 ## 3. Add the role (server script, reloadable)
 
 - `modpack/kubejs/server_scripts/20_army_summon_tokens.js`, array `UW_HYW_ROLES`:
-  - `id`, `role`, `name`, `faction`, `entity`, `skin: 'custom:undeadwar/<name>.png'`, `level`, `hp`, `hpBonus`
+  - `id`, `role`, `name`, `faction`, `entity`, `skin: 'custom:undeadwar/<name>.png'`, `level`（**固定 1，见 §0 等级铁律**）, `hp`, `hpBonus`
   - `tags` for faction + special behaviour
   - `gun` / `melee` / `sidearm` / `armor` (armor is a list of `item replace` strings; plain item ids are allowed when there are no enchants/affixes)
 - **Caster roles add `spellbook: { item, tag }`** (Iron's spell container NBT). The summon command appends
