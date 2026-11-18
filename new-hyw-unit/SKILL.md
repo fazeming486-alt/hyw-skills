@@ -289,3 +289,39 @@ Update `design/亡灵军_兵种统计.md` (or the human doc):
 - **`uwHywApplyArmor` 支持稀疏槽位**：`armor: [{slot:'chest', item:'...'}, ...]`，可以只穿某几个护甲位（U05 不戴头盔以露出皮肤）。原来的四元素字符串数组照旧可用。
 - **HP formula**: role HP is `base = (hp - hpBonus) / 5` plus a `multiply_total 4.0` modifier with UUID `f081c99d-ff76-4f48-a5a0-3d5d54a0c63f`, then `Health = hp`. A bare `/summon` (no role loadout) shows `base 30 × 5 = 150`, which is not the role HP; always verify with `/hywspawn`.
   - `blessed` 的加成看品质：**rare = +6 基础（+30 最终，hpBonus 30）**；**epic = +8 基础（+40 最终，hpBonus 40）**。U02 用 epic，所以 hpBonus 是 40；写错会得到 90 血。
+
+## 4.14 Mob 瞄准语义与落点 mixin 模式（2026-11-19 U14 实证）
+
+- **HYW mob 施法瞄目标 85% 身高**（`IronsSpellbooksIntegration.getSpellAimTargetY` = y + bbHeight×0.85），且读条期间每 aiStep tick 重瞄。玩家用准星压地面/脚底，mob 的水平视线射线在开阔地**打不到方块**——凡依赖"视线射线找落点"的法术，mob 施法必偏。
+- 已实证两例：`grandsigil:dimension_cut` 的 `Aim.ground` miss 分支把裂缝原点放前方 32 格，而 cut 伤害盒只有原点 ±8 → 全偏；`irons_spellbooks:teleport` 的 `findTeleportLocation` miss 分支落半空点 → 瞬移飞出去。
+- **修法模式**：施法起手 redirect（`IronMageEntityCasterMixin` 的 startMobSpellCast 调用点，有 target 参数）存目标 UUID 到 caster persistentData（`HywCutTarget`/`HywTpTarget`）；另写 mixin @Redirect 该法术 onCast 里的落点计算（`Aim.ground` / `findTeleportLocation`），caster 为我方 roster 单位且存有 UUID 时返回目标实时坐标（传送向施法者侧偏 1.2 格防碰撞挤飞），否则原样 vanilla。玩家施法分支不受影响。读条内目标移动也追得上（onCast 时实时解析）。
+- **坑**：`blood_step` 的 miss 分支直接调 `TeleportSpell.findTeleportLocation`，不经过 TeleportSpell.onCast → 只 hook onCast 的 mixin 覆盖不到它；且其 ENTITY 命中分支偏好"下方是空气"的候选点。用户 2026-11-19 裁定血步不修（强制背瞬移语义），但证据登记在此。
+- mixin 目标为第三方 mod 类时 `remap=false` + 官方名；handler 里 `Level.getEntity(UUID)` 不存在，需 `instanceof ServerLevel` 后调。
+
+## 4.15 TaCZ 1.2 通用物品 id 与 FTB 领取栏（2026-11-18 实证）
+
+- TaCZ 1.2.0 **不注册每把枪的独立物品**：枪=`tacz:modern_kinetic_gun`（NBT `GunId` 区分）、弹=`tacz:ammo`（`AmmoId`）、配件=`tacz:attachment`（`AttachmentId`）。写 `tacz:m4a1`/`tacz:556x45` 这类 id 会成 `ftbquests:missing_item`。
+- 配件槽 NBT 键：`AttachmentSCOPE/STOCK/LASER/GRIP/MUZZLE/EXTENDED_MAG`，值 `{id:"tacz:attachment",Count:1b,tag:{AttachmentId:"..."}}`。允许槽看枪 data 的 `allow_attachment_types`。
+- 使命召唤包 = TaCZArcana-Warzone（命名空间 warzone/bo6/bo7/nmw1/nmw2/ts）；**罪恶薪俸 = `nmw1:m4a1_twos`**（MW2019 蓝图，专属握把 `nmw1:grip_cf_twos`/制退器 `nmw1:muzzle_mb_twos`），弹 `wz:556nato`。枪包目录 = `<gamedir>/tacz/`（不是 resourcepacks）。
+- FTB Quests 领取栏：`config/ftbquests/quests/chapters/<hex>.snbt`，checkmark task + item rewards（可带 tag）；**Count 是 byte，≤127**（256/128 都会 NumberFormatException 整章静默跳过）；改完 `/ftbquests reload`，客户端重登同步。
+
+## 4.16 玩家血量 mod 级持久化（2026-11-18）
+
+- 单世界 `/attribute` 钉血量会在 respawn 掉回 20。整合包级做法：自研 mod `PlayerVitalsEvents`（PlayerLoggedInEvent/PlayerRespawnEvent/PlayerChangedDimensionEvent 钉 max_health base=300、respawn 补满），跨地图跨存档生效。客户端 SimpleHealthBar 已装（300 血不画 150 颗心）。
+- keepInventory 用 gamerule（世界級）；验证 respawn 用 `gamerule doImmediateRespawn true` + kill + 查 Health，测完关回。
+
+## 4.17 性能坑清单（新兵种必查）
+
+- **护甲词缀生效前提**：每件受管护甲 NBT 必须 `HywIntrinsicItem:1b`，否则 `normalizeManagedEquipment` 移出槽位、词缀全废（U05 旧病、U06 2026-11-19 才修）。武器不需要该 flag。
+- **BC 近战双写者**：`MageMeleeStrikeGoal` 走原版 doHurtTarget（3.2 窗、20t 独立冷却），HYW 的 BetterCombat 攻击循环另有 2.25 窗（dagger BC attack_range）；2.25–3.2 带只有原版挥击，sweeping 附魔在 mob 原版路径是死附魔。要 BC 动画/横扫必须接 `performBetterCombatAttack` 循环，不能只靠 strike goal。
+- **振荡**：总根因 GoalSelectorSafeIterationMixin 丢 vanilla 旗标仲裁，已按 phase1/2/3 重建；反射失败会静默回退 vanilla（CME 复发风险）。standoff/resume 带内 amp≈带宽的 hunting 是 MoveToBlockGoal 结构性问题，跨层循环（先走到目标正下方再折返楼梯）未修。
+- **环境坑**：T0 回档会丢 forceload 票（测试场实体 chunk 卸载后冻住，表现为"不动/打不到"）；vanilla RCON 响应 4KB 截断（探针用路径查询别整包 data get）；服务器死亡日志是英文（次元斩击杀="was cut along with the space"）；构建前必须停服（Gradle daemon 与运行中服务端互杀）；`cmd | tail && cp` 会掩盖 gradle 退出码拷旧 jar。
+
+## 4.18 战斗定义体系（2026-11-19 提案，刺客专修首轮消费）
+
+- 血量百分比：濒危<20%（逃跑线）、低 20–40%（分诊 0.35/处决 0.4 子触发）、中 40–80%（0.6 自保技能线）、高>80%（0.8 支援介入线）。
+- 绝对血量：低≤60 / 中 61–120 / 高 121–290 / 极高≥300（70hp 战斗法师=中血档；档位与阵营 tier 解耦）。
+- 单次伤害：低<15 / 中 15–40 / 高 40–100 / 非常高>100（斩首级）。
+- 治疗：持续用 %/s（1–5%），急救用平值（≥目标上限 25% 或固定大数），自回复平值≤1%/s 等效；回蓝沿用百分比不与血量混用。
+- 距离：近≤4 / 中 5–16 / 远 17–48 / 超远>48。**锁敌范围=交战距离上限**；远距锁而不追（holdPosition+standoff 范式）；跨层锁敌应全兵种化（感知放宽、开火仍 LOS 门控）。
+- codify：自研 mod `CombatDefinitions` 静态常量单一事实源（平衡常量进代码不进 config），roster 可选字段覆盖；散点分数常量收编引用。详见 design/刺客专修与战斗定义体系_2026-11-19.md。
